@@ -1,20 +1,24 @@
 package com.example.coursemodel.service;
 
-import com.example.coursemodel.repository.*;
-import com.example.coursemodel.model.*;
-import lombok.*;
-
+import com.example.coursemodel.model.Enrollment;
+import com.example.coursemodel.repository.ProfessorRepository;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
-import java.util.stream.*;
+import java.util.DoubleSummaryStatistics;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class ReportService {
+
     private final ProfessorRepository profRepo;
 
-    @Data @AllArgsConstructor
+    @Data
+    @AllArgsConstructor
     public static class ReportRow {
         private String professor;
         private long studentsCount;
@@ -24,16 +28,25 @@ public class ReportService {
     public List<ReportRow> buildReport() {
         return profRepo.findAll().stream()
             .map(p -> {
-                var grades = p.getCourses().stream()
-                    .flatMap(c -> c.getEnrollments().stream())
-                    .map(Enrollment::getGrade)
-                    .mapToDouble(Double::doubleValue);
-                long distinctStudents = p.getCourses().stream()
+                // 1. Считаем уникальных студентов
+                long studentsCount = p.getCourses().stream()
                     .flatMap(c -> c.getEnrollments().stream())
                     .map(Enrollment::getStudent)
                     .distinct()
                     .count();
-                return new ReportRow(p.getName(), distinctStudents, grades.average().orElse(0));
+
+                // 2. Собираем все оценки из всех enrollments
+                DoubleSummaryStatistics stats = p.getCourses().stream()
+                    .flatMap(c -> c.getEnrollments().stream())
+                    .flatMap(e -> e.getGrades().stream())
+                    .mapToDouble(Double::doubleValue)
+                    .summaryStatistics();
+
+                double avg = stats.getCount() > 0
+                    ? stats.getAverage()
+                    : 0.0;
+
+                return new ReportRow(p.getName(), studentsCount, avg);
             })
             .collect(Collectors.toList());
     }
